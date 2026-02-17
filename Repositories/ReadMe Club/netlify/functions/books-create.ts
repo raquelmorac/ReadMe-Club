@@ -1,5 +1,5 @@
 import { enrichBook } from "./_lib/openLibrary";
-import { store } from "./_lib/store";
+import { createSheetsClient, type SheetsClient } from "./_lib/sheetsClient";
 
 export interface CreateBookPayload {
   title: string;
@@ -7,7 +7,9 @@ export interface CreateBookPayload {
   proposedByMemberId: string;
 }
 
-export async function createBook(payload: CreateBookPayload) {
+export async function createBook(payload: CreateBookPayload, client: SheetsClient = createSheetsClient()) {
+  const nowIso = new Date().toISOString();
+  const today = nowIso.slice(0, 10);
   const enriched = await enrichBook(payload.title, payload.author);
   const book = {
     id: `b${Date.now()}`,
@@ -17,10 +19,23 @@ export async function createBook(payload: CreateBookPayload) {
     subjects: enriched.subjects,
     status: "want_to_read" as const,
     proposedByMemberId: payload.proposedByMemberId,
-    proposedAt: new Date().toISOString().slice(0, 10)
+    proposedAt: today
   };
 
-  store.books.push(book);
+  await client.appendRow("Books", {
+    book_id: book.id,
+    title: book.title,
+    author: book.author,
+    status: book.status,
+    total_pages: book.totalPages ? String(book.totalPages) : "",
+    subjects: (book.subjects ?? []).join(","),
+    cover_url: "",
+    open_library_id: "",
+    proposed_by_member_id: book.proposedByMemberId,
+    proposed_at: book.proposedAt,
+    created_at: nowIso,
+    updated_at: nowIso
+  });
   return book;
 }
 

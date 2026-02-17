@@ -1,24 +1,31 @@
-import { store } from "./_lib/store";
-import type { RankedVote } from "./_lib/repository";
+import { createSheetsClient, type SheetsClient } from "./_lib/sheetsClient";
 
-export function submitBallot(pollId: string, memberId: string, rankedBookIds: string[]) {
+export async function submitBallot(pollId: string, memberId: string, rankedBookIds: string[], client: SheetsClient = createSheetsClient()) {
   const uniqueIds = new Set(rankedBookIds);
   if (uniqueIds.size !== rankedBookIds.length) {
     throw new Error("Duplicate ranks are not allowed in one ballot.");
   }
 
-  store.votes = store.votes.filter((vote) => !(vote.memberId === memberId && (vote as RankedVote & { pollId?: string }).pollId === pollId));
+  const votes = await client.readRows("Votes");
+  const withoutExistingBallot = votes.filter((vote) => !(vote.poll_id === pollId && vote.member_id === memberId));
 
-  rankedBookIds.forEach((bookId, index) => {
-    const vote = { memberId, bookId, rankPosition: (index + 1) as 1 | 2 | 3, pollId } as RankedVote & { pollId: string };
-    store.votes.push(vote as unknown as RankedVote);
-  });
+  const nowIso = new Date().toISOString();
+  const appendedRows = rankedBookIds.map((bookId, index) => ({
+    vote_id: `v${Date.now()}_${index}`,
+    poll_id: pollId,
+    member_id: memberId,
+    book_id: bookId,
+    rank_position: String(index + 1),
+    created_at: nowIso
+  }));
+
+  await client.updateRows("Votes", [...withoutExistingBallot, ...appendedRows]);
 }
 
 export default async (event: { body?: string }) => {
   const body = JSON.parse(event.body ?? "{}");
   try {
-    submitBallot(body.pollId, body.memberId, body.rankedBookIds);
+    await submitBallot(body.pollId, body.memberId, body.rankedBookIds);
     return { statusCode: 204, body: "" };
   } catch (error) {
     return {

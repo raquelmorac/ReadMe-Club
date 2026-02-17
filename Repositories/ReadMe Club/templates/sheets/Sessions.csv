@@ -1,0 +1,2 @@
+session_id,book_id,session_datetime,page_start,page_end,notes,created_at
+s1,b1,2026-02-20T13:00:00Z,1,40,First weekly session,2026-02-17T00:00:00Z

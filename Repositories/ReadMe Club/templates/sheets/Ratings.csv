@@ -1,0 +1,2 @@
+rating_id,book_id,member_id,score,comment,created_at,updated_at
+r1,b1,m1,5,Great start,2026-02-17T00:00:00Z,2026-02-17T00:00:00Z
