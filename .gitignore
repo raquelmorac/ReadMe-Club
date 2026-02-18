@@ -4,3 +4,10 @@ dist/
 playwright-report/
 test-results/
 .DS_Store
+
+# Local Netlify folder
+.netlify
+
+# Local environment and tooling artifacts
+.env
+deno.lock

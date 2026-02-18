@@ -1,60 +1,104 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Book, Member, PollResult, Session } from "./types/domain";
 import { MemberSelector } from "./features/members/MemberSelector";
 import { WantsToReadList } from "./features/books/WantsToReadList";
 import { CurrentBookView } from "./features/current/CurrentBookView";
 import { ReadList } from "./features/books/ReadList";
 import { PollResults } from "./features/polls/PollResults";
+import { getJson } from "./api/client";
 
-const membersSeed: Member[] = [
-  { id: "m1", name: "Ana", active: true },
-  { id: "m2", name: "Raquel", active: true }
-];
-
-const booksSeed: Book[] = [
-  { id: "b1", title: "Dune", author: "Frank Herbert", status: "want_to_read", proposedByMemberId: "m1", proposedAt: "2026-02-10" },
-  { id: "b2", title: "The Left Hand of Darkness", author: "Ursula K. Le Guin", status: "read", proposedByMemberId: "m2", proposedAt: "2026-02-01" },
-  { id: "b3", title: "Hyperion", author: "Dan Simmons", status: "current", proposedByMemberId: "m1", proposedAt: "2026-02-12", totalPages: 480 }
-];
-
-const sessionSeed: Session[] = [
-  { id: "s1", bookId: "b3", sessionDateTime: "2026-02-13T13:00:00.000Z", pageStart: 1, pageEnd: 55 },
-  { id: "s2", bookId: "b3", sessionDateTime: "2026-02-20T13:00:00.000Z", pageStart: 56, pageEnd: 110 }
-];
-
-const pollResultSeed: PollResult = {
-  pollId: "p1",
-  rows: [
-    { bookId: "b1", points: 10, rank: 1 },
-    { bookId: "b3", points: 7, rank: 2 }
-  ]
-};
+const emptyPollResult: PollResult = { pollId: "none", rows: [] };
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "/.netlify/functions").replace(/\/$/, "");
 
 export function App() {
-  const [activeMemberId, setActiveMemberId] = useState<string | null>(membersSeed[0]?.id ?? null);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [books, setBooks] = useState<Book[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [activeMemberId, setActiveMemberId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const wantsToRead = useMemo(() => booksSeed.filter((b) => b.status === "want_to_read"), []);
-  const currentBook = useMemo(() => booksSeed.find((b) => b.status === "current") ?? null, []);
-  const readBooks = useMemo(() => booksSeed.filter((b) => b.status === "read"), []);
-  const currentSessions = useMemo(() => sessionSeed.filter((s) => s.bookId === currentBook?.id), [currentBook]);
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadData() {
+      try {
+        const [membersData, booksData] = await Promise.all([
+          getJson<Member[]>(`${apiBaseUrl}/members-list`),
+          getJson<Book[]>(`${apiBaseUrl}/books-list`)
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        setMembers(membersData);
+        setBooks(booksData);
+        setActiveMemberId((current) => current ?? membersData[0]?.id ?? null);
+        setLoadError(null);
+
+        const currentBook = booksData.find((book) => book.status === "current");
+        if (!currentBook) {
+          setSessions([]);
+          return;
+        }
+
+        const sessionData = await getJson<Session[]>(
+          `${apiBaseUrl}/sessions-list-by-book?bookId=${encodeURIComponent(currentBook.id)}`
+        );
+        if (!cancelled) {
+          setSessions(sessionData);
+        }
+      } catch {
+        if (!cancelled) {
+          setMembers([]);
+          setBooks([]);
+          setSessions([]);
+          setLoadError("Could not load live data.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadData();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const wantsToRead = useMemo(() => books.filter((b) => b.status === "want_to_read"), [books]);
+  const currentBook = useMemo(() => books.find((b) => b.status === "current") ?? null, [books]);
+  const readBooks = useMemo(() => books.filter((b) => b.status === "read"), [books]);
 
   return (
     <main className="app-shell">
+      {isLoading ? (
+        <div className="loading-overlay" role="status" aria-live="polite" aria-label="Loading club data">
+          <div className="loading-overlay-content">
+            <span className="spinner" aria-hidden="true" />
+            <span>Loading club data...</span>
+          </div>
+        </div>
+      ) : null}
       <h1>Reader Club</h1>
       <p className="muted">One-club dashboard for books, sessions, voting, and ratings.</p>
+      {loadError ? <p className="muted">{loadError}</p> : null}
 
       <section className="card">
         <h2>Active member</h2>
-        <MemberSelector members={membersSeed} value={activeMemberId} onChange={setActiveMemberId} />
+        <MemberSelector members={members} value={activeMemberId} onChange={setActiveMemberId} />
       </section>
 
       <section className="grid">
-        <WantsToReadList books={wantsToRead} members={membersSeed} />
+        <WantsToReadList books={wantsToRead} members={members} />
         <ReadList books={readBooks} />
       </section>
 
-      <CurrentBookView book={currentBook} sessions={currentSessions} />
-      <PollResults result={pollResultSeed} books={booksSeed} />
+      <CurrentBookView book={currentBook} sessions={sessions} />
+      <PollResults result={emptyPollResult} books={books} />
     </main>
   );
 }

@@ -1,5 +1,6 @@
 import { store } from "./_lib/store";
 import { createSheetsClient } from "./_lib/sheetsClient";
+import { json } from "./_lib/http";
 
 export default async () => {
   const client = createSheetsClient();
@@ -17,8 +18,8 @@ export default async () => {
       proposedByMemberId: row.proposed_by_member_id,
       proposedAt: row.proposed_at
     }));
-    return { statusCode: 200, body: JSON.stringify(books) };
+    return json(books);
   } catch {
-    return { statusCode: 200, body: JSON.stringify(store.books) };
+    return json(store.books);
   }
 };

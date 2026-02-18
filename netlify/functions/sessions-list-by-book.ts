@@ -1,4 +1,5 @@
 import { createSheetsClient } from "./_lib/sheetsClient";
+import { json } from "./_lib/http";
 
 export default async (event: { queryStringParameters?: { bookId?: string } }) => {
   const bookId = event.queryStringParameters?.bookId ?? "";
@@ -13,5 +14,5 @@ export default async (event: { queryStringParameters?: { bookId?: string } }) =>
       pageStart: Number(row.page_start),
       pageEnd: Number(row.page_end)
     }));
-  return { statusCode: 200, body: JSON.stringify(sessions) };
+  return json(sessions);
 };

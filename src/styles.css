@@ -35,6 +35,15 @@ h1, h2, h3 {
   margin: 0.8rem 0;
 }
 
+.spinner {
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid #c2d2d0;
+  border-top-color: var(--accent);
+  border-radius: 999px;
+  animation: spin 0.75s linear infinite;
+}
+
 .grid {
   display: grid;
   gap: 1rem;
@@ -61,4 +70,31 @@ button[disabled] {
 
 .error {
   color: #9f1239;
+}
+
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(247, 244, 238, 0.9);
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  pointer-events: all;
+}
+
+.loading-overlay-content {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: var(--panel);
+  border: 1px solid #e5dccf;
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  box-shadow: 0 8px 24px rgba(31, 42, 46, 0.08);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
