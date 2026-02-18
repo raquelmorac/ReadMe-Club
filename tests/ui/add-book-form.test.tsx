@@ -20,3 +20,22 @@ it("submits title and proposer", async () => {
 
   expect(submitted).toBe(true);
 });
+
+it("shows an error when submit fails", async () => {
+  render(
+    <AddBookForm
+      proposedByMemberId="m1"
+      onSubmit={async () => {
+        throw new Error("Could not add book right now.");
+      }}
+    />
+  );
+
+  await act(async () => {
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Dune" } });
+    fireEvent.change(screen.getByLabelText("Author"), { target: { value: "Frank Herbert" } });
+    fireEvent.submit(screen.getByRole("button", { name: "Add" }));
+  });
+
+  expect(screen.getByRole("alert")).toHaveTextContent("Could not add book right now.");
+});

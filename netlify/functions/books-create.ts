@@ -1,5 +1,6 @@
 import { enrichBook } from "./_lib/openLibrary";
 import { createSheetsClient, type SheetsClient } from "./_lib/sheetsClient";
+import { json, parseJsonBody } from "./_lib/http";
 
 export interface CreateBookPayload {
   title: string;
@@ -39,8 +40,21 @@ export async function createBook(payload: CreateBookPayload, client: SheetsClien
   return book;
 }
 
-export default async (event: { body?: string }) => {
-  const body = JSON.parse(event.body ?? "{}");
-  const created = await createBook(body as CreateBookPayload);
-  return { statusCode: 201, body: JSON.stringify(created) };
+export default async (event: { body?: unknown; text?: () => Promise<string>; json?: () => Promise<unknown> }) => {
+  try {
+    const body = await parseJsonBody<Partial<CreateBookPayload>>(event);
+    if (!body.title?.trim() || !body.author?.trim() || !body.proposedByMemberId?.trim()) {
+      return json({ error: "Title, author, and proposer are required." }, 400);
+    }
+
+    const created = await createBook({
+      title: body.title.trim(),
+      author: body.author.trim(),
+      proposedByMemberId: body.proposedByMemberId.trim()
+    });
+    return json(created, 201);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not create book.";
+    return json({ error: message }, 500);
+  }
 };

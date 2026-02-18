@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Book, Member, PollResult, Session } from "./types/domain";
 import { MemberSelector } from "./features/members/MemberSelector";
-import { WantsToReadList } from "./features/books/WantsToReadList";
+import { WantToReadPage } from "./features/books/WantToReadPage";
 import { CurrentBookView } from "./features/current/CurrentBookView";
 import { ReadList } from "./features/books/ReadList";
 import { PollResults } from "./features/polls/PollResults";
@@ -9,6 +9,7 @@ import { getJson } from "./api/client";
 
 const emptyPollResult: PollResult = { pollId: "none", rows: [] };
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "/.netlify/functions").replace(/\/$/, "");
+type PageView = "dashboard" | "want_to_read";
 
 export function App() {
   const [members, setMembers] = useState<Member[]>([]);
@@ -17,38 +18,101 @@ export function App() {
   const [activeMemberId, setActiveMemberId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [pageView, setPageView] = useState<PageView>("dashboard");
+
+  async function readErrorMessage(response: Response) {
+    const fallback = `Request failed: ${response.status}`;
+    try {
+      const contentType = response.headers.get("content-type") ?? "";
+      if (contentType.includes("application/json")) {
+        const body = await response.json();
+        if (typeof body?.error === "string" && body.error.trim()) {
+          return body.error;
+        }
+      } else {
+        const text = await response.text();
+        if (text.trim()) {
+          return text.trim();
+        }
+      }
+    } catch {
+      return fallback;
+    }
+    return fallback;
+  }
+
+  async function loadBooksAndSessions() {
+    const booksData = await getJson<Book[]>(`${apiBaseUrl}/books-list`);
+    setBooks(booksData);
+
+    const selectedCurrentBook = booksData.find((book) => book.status === "current");
+    if (!selectedCurrentBook) {
+      setSessions([]);
+      return;
+    }
+
+    const sessionData = await getJson<Session[]>(
+      `${apiBaseUrl}/sessions-list-by-book?bookId=${encodeURIComponent(selectedCurrentBook.id)}`
+    );
+    setSessions(sessionData);
+  }
+
+  async function handleAddBook(payload: { title: string; author: string; proposedByMemberId: string }) {
+    const response = await fetch(`${apiBaseUrl}/books-create`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response));
+    }
+    await loadBooksAndSessions();
+  }
+
+  async function handleUpdateBook(payload: { id: string; title: string; author: string }) {
+    const response = await fetch(`${apiBaseUrl}/books-update`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+      throw new Error(`Request failed: ${response.status}`);
+    }
+    await loadBooksAndSessions();
+  }
+
+  async function handleDeleteBook(id: string) {
+    const response = await fetch(`${apiBaseUrl}/books-delete`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ id })
+    });
+    if (!response.ok) {
+      throw new Error(`Request failed: ${response.status}`);
+    }
+    await loadBooksAndSessions();
+  }
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadData() {
       try {
-        const [membersData, booksData] = await Promise.all([
-          getJson<Member[]>(`${apiBaseUrl}/members-list`),
-          getJson<Book[]>(`${apiBaseUrl}/books-list`)
-        ]);
-
+        const membersData = await getJson<Member[]>(`${apiBaseUrl}/members-list`);
         if (cancelled) {
           return;
         }
-
         setMembers(membersData);
-        setBooks(booksData);
         setActiveMemberId((current) => current ?? membersData[0]?.id ?? null);
         setLoadError(null);
 
-        const currentBook = booksData.find((book) => book.status === "current");
-        if (!currentBook) {
-          setSessions([]);
-          return;
-        }
-
-        const sessionData = await getJson<Session[]>(
-          `${apiBaseUrl}/sessions-list-by-book?bookId=${encodeURIComponent(currentBook.id)}`
-        );
-        if (!cancelled) {
-          setSessions(sessionData);
-        }
+        await loadBooksAndSessions();
       } catch {
         if (!cancelled) {
           setMembers([]);
@@ -86,19 +150,35 @@ export function App() {
       <h1>Reader Club</h1>
       <p className="muted">One-club dashboard for books, sessions, voting, and ratings.</p>
       {loadError ? <p className="muted">{loadError}</p> : null}
+      <nav className="page-nav">
+        <button type="button" onClick={() => setPageView("dashboard")}>Dashboard</button>
+        <button type="button" onClick={() => setPageView("want_to_read")}>Want to Read</button>
+      </nav>
 
       <section className="card">
         <h2>Active member</h2>
         <MemberSelector members={members} value={activeMemberId} onChange={setActiveMemberId} />
       </section>
 
-      <section className="grid">
-        <WantsToReadList books={wantsToRead} members={members} />
-        <ReadList books={readBooks} />
-      </section>
+      {pageView === "want_to_read" ? (
+        <WantToReadPage
+          books={wantsToRead}
+          members={members}
+          activeMemberId={activeMemberId}
+          onCreate={handleAddBook}
+          onUpdate={handleUpdateBook}
+          onDelete={handleDeleteBook}
+        />
+      ) : (
+        <>
+          <section className="grid">
+            <ReadList books={readBooks} />
+          </section>
 
-      <CurrentBookView book={currentBook} sessions={sessions} />
-      <PollResults result={emptyPollResult} books={books} />
+          <CurrentBookView book={currentBook} sessions={sessions} />
+          <PollResults result={emptyPollResult} books={books} />
+        </>
+      )}
     </main>
   );
 }
